@@ -1,0 +1,21 @@
+ body {
+            padding-top: 70px;
+            background-color:skyblue;
+        }
+
+        .low-stock {
+            background: #fff3cd !important;
+        }
+
+        .cursor-pointer {
+            cursor: pointer;
+        }
+
+        .table-responsive {
+            max-height: 60vh;
+            overflow: auto;
+        }
+
+        .card-stats {
+            min-width: 12rem;
+        }

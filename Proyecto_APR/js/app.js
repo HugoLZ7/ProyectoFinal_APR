@@ -1,0 +1,337 @@
+ // -- Datos y almacenamiento --
+        const LS_KEY = 'ferreteria_inventario_v1';
+        let state = {
+            products: [],
+            categories: [],
+            suppliers: []
+        };
+
+        function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+        function loadState() { const raw = localStorage.getItem(LS_KEY); if (raw) state = JSON.parse(raw); }
+
+        // seed de ejemplo
+        function seedData() {
+            state.categories = ['Tornillería', 'Herramientas', 'Pinturas', 'Electricidad'];
+            state.suppliers = ['Proveedor A', 'Proveedor B', 'Proveedor C'];
+            state.products = [
+                { id: genId(), name: 'Tornillo 3/8" x 2cm', sku: 'TOR-038-02', category: 'Tornillería', supplier: 'Proveedor A', price: 0.15, cost: 0.08, stock: 120, minStock: 10, location: 'A1', desc: 'Tornillo de cabeza plana', image: '', active: true },
+                { id: genId(), name: 'Taladro Percutor 500W', sku: 'TAL-500', category: 'Herramientas', supplier: 'Proveedor B', price: 55.00, cost: 35.00, stock: 8, minStock: 5, location: 'B2', desc: 'Taladro con cable 500W', image: '', active: true },
+                { id: genId(), name: 'Pintura esmalte blanco 1L', sku: 'PES-1L', category: 'Pinturas', supplier: 'Proveedor C', price: 12.00, cost: 6.00, stock: 3, minStock: 5, location: 'C1', desc: 'Esmalte sintético', image: '', active: true },
+            ];
+            saveState();
+            renderAll();
+        }
+
+        // util
+        function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+        function formatMoney(v) { return '$' + Number(v || 0).toFixed(2); }
+
+        // -- Render --
+        let currentPage = 1, pageSize = 10, currentSort = { key: 'id', dir: 1 };
+        function renderAll() { renderStats(); renderFilters(); renderTable(); }
+
+        function renderStats() {
+            document.getElementById('statTotal').textContent = state.products.length;
+            const activeCount = state.products.filter(p => p.active).length;
+            document.getElementById('statActive').textContent = 'Activos: ' + activeCount;
+            const low = state.products.filter(p => p.minStock !== undefined && p.stock <= p.minStock).length;
+            document.getElementById('statLow').textContent = low;
+            document.getElementById('statCats').textContent = state.categories.length;
+            document.getElementById('statSuppliers').textContent = 'Proveedores: ' + state.suppliers.length;
+            const value = state.products.reduce((s, p) => s + (p.price || 0) * (p.stock || 0), 0);
+            document.getElementById('statValue').textContent = formatMoney(value);
+
+            document.getElementById('summarySKUs').textContent = state.products.length;
+            document.getElementById('summaryUnits').textContent = state.products.reduce((s, p) => s + (p.stock || 0), 0);
+            document.getElementById('summaryLow').textContent = low;
+        }
+
+        function renderFilters() {
+            const catSel = document.getElementById('filterCategory');
+            const prodCat = document.getElementById('productCategory');
+            catSel.innerHTML = '<option value="">Todas las categorías</option>' + state.categories.map(c => `<option>${c}</option>`).join('');
+            prodCat.innerHTML = '<option value="">-- Seleccionar --</option>' + state.categories.map(c => `<option>${c}</option>`).join('');
+
+            const supSel = document.getElementById('filterSupplier');
+            const prodSup = document.getElementById('productSupplier');
+            supSel.innerHTML = '<option value="">Todos los proveedores</option>' + state.suppliers.map(s => `<option>${s}</option>`).join('');
+            prodSup.innerHTML = '<option value="">-- Seleccionar --</option>' + state.suppliers.map(s => `<option>${s}</option>`).join('');
+        }
+
+        function compare(a, b, key, dir) {
+            const av = a[key] ?? '';
+            const bv = b[key] ?? '';
+            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+            return String(av).localeCompare(String(bv)) * dir;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('productsTbody');
+            const q = document.getElementById('searchInput').value.trim().toLowerCase();
+            const cat = document.getElementById('filterCategory').value;
+            const sup = document.getElementById('filterSupplier').value;
+            const active = document.getElementById('filterActive').value;
+
+            let list = state.products.filter(p => {
+                if (q && !(p.name || '').toLowerCase().includes(q) && !(p.sku || '').toLowerCase().includes(q) && !(p.desc || '').toLowerCase().includes(q)) return false;
+                if (cat && p.category !== cat) return false;
+                if (sup && p.supplier !== sup) return false;
+                if (active !== '') if (String(p.active) !== active) return false;
+                return true;
+            });
+
+            list.sort((a, b) => compare(a, b, currentSort.key, currentSort.dir));
+
+            // pagination
+            const total = list.length;
+            const pages = Math.max(1, Math.ceil(total / pageSize));
+            if (currentPage > pages) currentPage = pages;
+            const start = (currentPage - 1) * pageSize;
+            const pageItems = list.slice(start, start + pageSize);
+
+            tbody.innerHTML = pageItems.map(p => {
+                const lowClass = (p.minStock !== undefined && p.stock <= p.minStock) ? 'low-stock' : '';
+                return `<tr class="${lowClass}" data-id="${p.id}">
+      <td><input type="checkbox" class="select-row form-check-input me-2"> ${p.id.slice(-6)}</td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.sku || '')}</td>
+      <td>${escapeHtml(p.category || '')}</td>
+      <td>${escapeHtml(p.supplier || '')}</td>
+      <td>${formatMoney(p.price)}</td>
+      <td>${p.stock}</td>
+      <td>${p.minStock || 0}</td>
+      <td class="text-end">
+        <div class="btn-group" role="group">
+          <button class="btn btn-sm btn-outline-primary btn-edit" title="Editar"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-sm btn-outline-success btn-quick" title="Venta/Ingreso"><i class="bi bi-arrow-repeat"></i></button>
+          <button class="btn btn-sm btn-outline-danger btn-delete" title="Eliminar"><i class="bi bi-trash"></i></button>
+        </div>
+      </td>
+    </tr>`;
+            }).join('');
+
+            renderPagination(pages);
+            bindTableEvents();
+        }
+
+        function renderPagination(pages) {
+            const ul = document.getElementById('pagination');
+            ul.innerHTML = '';
+            for (let i = 1; i <= pages; i++) {
+                ul.innerHTML += `<li class="page-item ${i === currentPage ? 'active' : ' '}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+            }
+            // events
+            ul.querySelectorAll('a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); currentPage = Number(a.dataset.page); renderTable(); }));
+        }
+
+        function bindTableEvents() {
+            document.querySelectorAll('#productsTbody .btn-edit').forEach(b => b.addEventListener('click', onEditClick));
+            document.querySelectorAll('#productsTbody .btn-delete').forEach(b => b.addEventListener('click', onDeleteClick));
+            document.querySelectorAll('#productsTbody .btn-quick').forEach(b => b.addEventListener('click', onQuickClick));
+        }
+
+        function onEditClick(e) {
+            const id = e.target.closest('tr').dataset.id;
+            openProductModal(id);
+        }
+        function onDeleteClick(e) {
+            const id = e.target.closest('tr').dataset.id;
+            if (!confirm('¿Eliminar producto?')) return;
+            state.products = state.products.filter(p => p.id !== id);
+            saveState(); renderAll();
+        }
+        function onQuickClick(e) {
+            const id = e.target.closest('tr').dataset.id;
+            document.getElementById('quickProductId').value = id;
+            document.getElementById('quickQty').value = 1;
+            document.getElementById('quickNote').value = '';
+            const modal = new bootstrap.Modal(document.getElementById('modalQuick'));
+            modal.show();
+        }
+
+        // -- Formularios y acciones --
+        const modalProductEl = document.getElementById('modalProduct');
+        const modalProduct = new bootstrap.Modal(modalProductEl);
+
+        document.getElementById('btnAddProduct').addEventListener('click', () => openProductModal());
+
+        function openProductModal(id) {
+            resetProductForm();
+            document.getElementById('modalTitle').textContent = id ? 'Editar producto' : 'Agregar producto';
+            if (id) {
+                const p = state.products.find(x => x.id === id);
+                if (!p) return;
+                document.getElementById('productId').value = p.id;
+                document.getElementById('productName').value = p.name;
+                document.getElementById('productSKU').value = p.sku;
+                document.getElementById('productCategory').value = p.category || '';
+                document.getElementById('productSupplier').value = p.supplier || '';
+                document.getElementById('productPrice').value = p.price;
+                document.getElementById('productCost').value = p.cost;
+                document.getElementById('productStock').value = p.stock;
+                document.getElementById('productMinStock').value = p.minStock || 1;
+                document.getElementById('productDesc').value = p.desc || '';
+                document.getElementById('productLocation').value = p.location || '';
+                document.getElementById('productImage').value = p.image || '';
+                document.getElementById('productActive').checked = !!p.active;
+            }
+            modalProduct.show();
+        }
+
+        function resetProductForm() {
+            document.getElementById('formProduct').reset();
+            document.getElementById('productId').value = '';
+        }
+
+        document.getElementById('formProduct').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const id = document.getElementById('productId').value;
+            const p = {
+                id: id || genId(),
+                name: document.getElementById('productName').value.trim(),
+                sku: document.getElementById('productSKU').value.trim(),
+                category: document.getElementById('productCategory').value || '',
+                supplier: document.getElementById('productSupplier').value || '',
+                price: Number(document.getElementById('productPrice').value) || 0,
+                cost: Number(document.getElementById('productCost').value) || 0,
+                stock: Number(document.getElementById('productStock').value) || 0,
+                minStock: Number(document.getElementById('productMinStock').value) || 1,
+                location: document.getElementById('productLocation').value || '',
+                desc: document.getElementById('productDesc').value || '',
+                image: document.getElementById('productImage').value || '',
+                active: document.getElementById('productActive').checked
+            };
+            if (id) {
+                state.products = state.products.map(x => x.id === id ? p : x);
+            } else {
+                state.products.push(p);
+            }
+            saveState(); modalProduct.hide(); renderAll();
+        });
+
+        // quick form
+        document.getElementById('formQuick').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const id = document.getElementById('quickProductId').value;
+            const type = document.getElementById('quickType').value;
+            const qty = Number(document.getElementById('quickQty').value) || 0;
+            const note = document.getElementById('quickNote').value;
+            const p = state.products.find(x => x.id === id);
+            if (!p) return;
+            if (type === 'sale') p.stock = Math.max(0, p.stock - qty);
+            else p.stock = p.stock + qty;
+            saveState(); renderAll();
+            const modal = bootstrap.Modal.getInstance(document.getElementById('modalQuick'));
+            modal.hide();
+        });
+
+        // add category / supplier
+        document.getElementById('btnAddCategory').addEventListener('click', () => {
+            document.getElementById('modalSmallTitle').textContent = 'Agregar categoría';
+            document.getElementById('modalSmallBody').innerHTML = '<input id="smallInput" class="form-control" placeholder="Nombre de la categoría">';
+            document.getElementById('modalSmallOk').onclick = function (e) {
+                const v = document.getElementById('smallInput').value.trim(); if (!v) return alert('Ingrese nombre');
+                if (!state.categories.includes(v)) state.categories.push(v);
+                saveState(); renderAll(); bootstrap.Modal.getInstance(document.getElementById('modalSmall')).hide();
+            };
+            new bootstrap.Modal(document.getElementById('modalSmall')).show();
+        });
+
+        document.getElementById('btnAddSupplier').addEventListener('click', () => {
+            document.getElementById('modalSmallTitle').textContent = 'Agregar proveedor';
+            document.getElementById('modalSmallBody').innerHTML = '<input id="smallInput" class="form-control" placeholder="Nombre del proveedor">';
+            document.getElementById('modalSmallOk').onclick = function (e) {
+                const v = document.getElementById('smallInput').value.trim(); if (!v) return alert('Ingrese nombre');
+                if (!state.suppliers.includes(v)) state.suppliers.push(v);
+                saveState(); renderAll(); bootstrap.Modal.getInstance(document.getElementById('modalSmall')).hide();
+            };
+            new bootstrap.Modal(document.getElementById('modalSmall')).show();
+        });
+
+        // search / filters
+        ['searchInput', 'filterCategory', 'filterSupplier', 'filterActive'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => { currentPage = 1; renderTable(); });
+        });
+
+        document.getElementById('btnResetFilters').addEventListener('click', () => {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterCategory').value = '';
+            document.getElementById('filterSupplier').value = '';
+            document.getElementById('filterActive').value = '';
+            renderTable();
+        });
+
+        // sorting
+        document.querySelectorAll('#productsTable thead th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sort;
+                if (currentSort.key === key) currentSort.dir *= -1; else { currentSort.key = key; currentSort.dir = 1; }
+                renderTable();
+            });
+        });
+
+        // bulk delete
+        document.getElementById('btnDeleteSelected').addEventListener('click', () => {
+            const ids = Array.from(document.querySelectorAll('#productsTbody input.select-row:checked')).map(c => c.closest('tr').dataset.id);
+            if (!ids.length) return alert('No hay seleccionados');
+            if (!confirm('Eliminar ' + ids.length + ' productos?')) return;
+            state.products = state.products.filter(p => !ids.includes(p.id)); saveState(); renderAll();
+        });
+
+        // quick sale / restock buttons
+        document.getElementById('btnAddSale').addEventListener('click', () => openQuickModalForFirst('sale'));
+        document.getElementById('btnRestock').addEventListener('click', () => openQuickModalForFirst('restock'));
+        function openQuickModalForFirst(type) {
+            if (!state.products.length) return alert('No hay productos');
+            document.getElementById('quickProductId').value = state.products[0].id;
+            document.getElementById('quickType').value = type;
+            new bootstrap.Modal(document.getElementById('modalQuick')).show();
+        }
+
+        // import / export
+        document.getElementById('btnExportJSON').addEventListener('click', () => {
+            const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'inventario-ferreteria.json'; a.click(); URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('btnExportCSV').addEventListener('click', () => {
+            const rows = [['id', 'name', 'sku', 'category', 'supplier', 'price', 'cost', 'stock', 'minStock', 'location', 'desc', 'active']];
+            state.products.forEach(p => rows.push([p.id, p.name, p.sku, p.category, p.supplier, p.price, p.cost, p.stock, p.minStock, p.location, p.desc, p.active]));
+            const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'inventario-ferreteria.csv'; a.click(); URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('btnImportJSON').addEventListener('click', () => {
+            const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json';
+            input.onchange = e => {
+                const f = e.target.files[0]; if (!f) return;
+                const reader = new FileReader(); reader.onload = ev => {
+                    try {
+                        const obj = JSON.parse(ev.target.result);
+                        if (obj.products && obj.categories && obj.suppliers) { state = obj; saveState(); renderAll(); alert('Importado correctamente'); }
+                        else alert('JSON no tiene la estructura esperada (products, categories, suppliers)');
+                    } catch (err) { alert('Error leyendo JSON: ' + err.message); }
+                };
+                reader.readAsText(f);
+            };
+            input.click();
+        });
+
+        // clear storage
+        document.getElementById('btnClearStorage').addEventListener('click', () => {
+            if (!confirm('Esto eliminará todo el inventario guardado en el navegador. ¿Continuar?')) return;
+            localStorage.removeItem(LS_KEY); state = { products: [], categories: [], suppliers: [] }; renderAll();
+        });
+
+        document.getElementById('btnSeedData').addEventListener('click', () => { if (confirm('Sobrescribir con datos de ejemplo?')) seedData(); });
+
+        // helpers
+        function escapeHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+        // init
+        (function init() { loadState(); if (!state.products.length && !state.categories.length && !state.suppliers.length) { seedData(); return; } renderAll(); })();
+
+        // small utilities: keyboard shortcuts
+        window.addEventListener('keydown', function (e) { if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openProductModal(); } });
