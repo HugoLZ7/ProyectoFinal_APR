@@ -32,6 +32,8 @@ document.getElementById("loginForm").addEventListener("submit", function(event) 
       window.location.href = "inventario.html";
     }, 2000); // redirige después de 2 segundos
   } else {
-    errorMsg.classList.remove("d-none");
+   // Si son incorrectas
+    const modalError = new bootstrap.Modal(document.getElementById("errorModal"));
+    modalError.show();
   }
 });
