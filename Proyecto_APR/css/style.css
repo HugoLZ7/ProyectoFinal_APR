@@ -1,8 +1,9 @@
- body {
+/* Estilos generales para el cuerpo de la página */
+body {
             padding-top: 70px;
             background-color:skyblue;
         }
-
+/* Estilo para elementos que indican bajo inventario */
         .low-stock {
             background: #fff3cd !important;
         }
@@ -18,4 +19,5 @@
 
         .card-stats {
             min-width: 12rem;
+
         }
